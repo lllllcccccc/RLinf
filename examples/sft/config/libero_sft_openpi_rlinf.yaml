@@ -1,0 +1,84 @@
+defaults:
+  - model/pi0_5_rlinf@actor.model
+  - hybrid_engines/fsdp@actor.fsdp_config
+  - override hydra/job_logging: stdout
+  - _self_
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  searchpath:
+    - file://${oc.env:EMBODIED_PATH}/config/
+
+cluster:
+  num_nodes: 1
+  component_placement:
+    actor,env,rollout: all
+
+runner:
+  task_type: sft
+  logger:
+    log_path: "../results"
+    project_name: rlinf
+    experiment_name: "libero_pi05_openpi_rlinf_sft"
+    logger_backends: ["tensorboard"]
+  max_epochs: -1
+  max_steps: 30000
+  val_check_interval: -1
+  save_interval: 10000
+
+data:
+  train_data_paths: "/mnt/public2/luoxi/data/physical-intelligence/libero"
+  num_workers: 8
+
+actor:
+  group_name: "ActorGroup"
+  training_backend: "fsdp"
+  micro_batch_size: 8
+  global_batch_size: 128
+  seed: 0
+  model:
+    precision: fp32
+    # Raw OpenPI PyTorch layout (paligemma_with_expert.*). The openpi_rlinf
+    # loader converts keys in memory; no offline ckpt conversion needed.
+    model_path: "/mnt/public2/luoxi/models/pi05_base"
+    num_action_chunks: 10 # pi05_libero action_horizon
+    action_dim: 7
+    add_value_head: False
+    openpi:
+      task: sft
+      config_name: "pi05_libero"
+      num_images_in_input: 2 # agentview + wrist
+      assets_dir: "/mnt/public2/luoxi/models/libero_assets"
+      asset_id: "physical-intelligence/libero"
+    openpi_data:
+      norm_stats_path: ${actor.model.openpi.assets_dir}/${actor.model.openpi.asset_id}/norm_stats.json
+  optim:
+    lr: 2.5e-5
+    adam_beta1: 0.9
+    adam_beta2: 0.95
+    adam_eps: 1.0e-08
+    weight_decay: 1e-10
+    clip_grad: 1.0
+    total_training_steps: 30000
+    lr_warmup_steps: 1000
+    lr_scheduler: "openpi_cosine"
+    num_cycles: 0.5
+    min_lr: 2.5e-6
+  fsdp_config:
+    strategy: "fsdp"
+    sharding_strategy: "full_shard"
+    use_orig_params: True
+    gradient_checkpointing: True
+    gradient_checkpointing_use_reentrant: False
+    mixed_precision:
+      param_dtype: bf16
+      reduce_dtype: fp32
+      buffer_dtype: fp32
+
+reward:
+  use_reward_model: False
+
+critic:
+  use_critic_model: False

@@ -449,7 +449,6 @@ class LiberoEnv(gym.Env):
             if variant == "pro":
                 bddl_lang, bddl_goal = _read_bddl_language_and_goal(final_path)
                 desc = bddl_lang if bddl_lang else task.language
-                task_descriptions.append(desc)
                 if self.is_eval:
                     logger.info(
                         "[LIBERO-PRO lang] env=%s pert_folder=%s "
@@ -463,7 +462,21 @@ class LiberoEnv(gym.Env):
                         final_path,
                     )
             else:
-                task_descriptions.append(task.language)
+                desc = task.language
+
+            prompt_override = self.cfg.get("prompt_override", None)
+            if prompt_override is not None:
+                desc = str(prompt_override)
+                if self.is_eval:
+                    logger.info(
+                        "[LIBERO prompt override] env=%s task_id=%s "
+                        "original=%r override=%r",
+                        env_id,
+                        int(self.task_ids[env_id]),
+                        task.language,
+                        desc,
+                    )
+            task_descriptions.append(desc)
 
         self.task_descriptions = task_descriptions
         self._pert_init_folders = pert_init_folders
