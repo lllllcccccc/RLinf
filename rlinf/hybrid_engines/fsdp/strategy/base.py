@@ -189,6 +189,7 @@ class FSDPStrategyBase(ABC):
         save_path: str,
         save_full_model_weights: bool = True,
         checkpoint_format: str = "dcp",
+        save_dcp_checkpoint: bool = True,
     ) -> None:
         """
         Save the training state checkpoint.
@@ -206,6 +207,8 @@ class FSDPStrategyBase(ABC):
             save_path (str): The path to save the checkpoint.
             save_full_model_weights (bool): Whether to save full model weights.
             checkpoint_format (str): "dcp" or "local_shard".
+            save_dcp_checkpoint (bool): Whether to save the resumable DCP
+                training state when ``checkpoint_format`` is ``"dcp"``.
         """
         clear_memory()
         torch.distributed.barrier()
@@ -229,7 +232,7 @@ class FSDPStrategyBase(ABC):
                     training_state.state_dict(),
                     os.path.join(local_shard_save_path, f"checkpoint_rank_{rank}.pt"),
                 )
-            else:
+            elif save_dcp_checkpoint:
                 from torch.distributed import checkpoint as dcp
 
                 dcp_save_path = os.path.join(save_path, "dcp_checkpoint")

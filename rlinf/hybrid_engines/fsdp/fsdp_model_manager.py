@@ -381,6 +381,7 @@ class FSDPModelManager:
             save_full_model_weights=self._cfg.fsdp_config.get(
                 "save_full_model_weights", True
             ),
+            save_dcp_checkpoint=self._cfg.fsdp_config.get("save_dcp_checkpoint", True),
         )
 
         if restore_weight_offload:

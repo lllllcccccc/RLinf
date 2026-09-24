@@ -142,6 +142,8 @@ class LiberoEnv(gym.Env):
         self.num_group = self.num_envs // self.group_size
         self.use_fixed_reset_state_ids = cfg.use_fixed_reset_state_ids
         self.specific_reset_id = cfg.get("specific_reset_id", None)
+        self.specific_task_id = cfg.get("specific_task_id", None)
+        self.specific_trial_id = cfg.get("specific_trial_id", None)
         self.task_id_filter = cfg.get("task_id_filter", None)
         if self.task_id_filter is not None:
             self.task_id_filter = list(self.task_id_filter)
@@ -157,6 +159,7 @@ class LiberoEnv(gym.Env):
         self.task_suite: Benchmark = get_benchmark_overridden(cfg.task_suite_name)()
 
         self._compute_total_num_group_envs()
+        self._set_specific_reset_id_from_task_and_trial()
         self.reset_state_ids_all = self.get_reset_state_ids_all()
         if self.is_eval:
             pool = self.reset_state_ids_all[self.seed_offset]
@@ -481,6 +484,63 @@ class LiberoEnv(gym.Env):
         self.task_descriptions = task_descriptions
         self._pert_init_folders = pert_init_folders
         return env_fn_params
+
+    def _set_specific_reset_id_from_task_and_trial(self):
+        """Resolve optional zero-based task/trial IDs to a global reset-state ID."""
+        task_id = self.specific_task_id
+        trial_id = self.specific_trial_id
+
+        if task_id is None and trial_id is None:
+            return
+        if task_id is None or trial_id is None:
+            raise ValueError(
+                "specific_task_id and specific_trial_id must be configured together"
+            )
+        if self.specific_reset_id is not None:
+            raise ValueError(
+                "specific_task_id/specific_trial_id cannot be combined with "
+                "specific_reset_id"
+            )
+        if self.task_id_filter is not None:
+            raise ValueError(
+                "specific_task_id/specific_trial_id cannot be combined with "
+                "task_id_filter"
+            )
+        if not isinstance(task_id, (int, np.integer)) or isinstance(task_id, bool):
+            raise ValueError(
+                f"specific_task_id must be an int, got "
+                f"{type(task_id).__name__}: {task_id}"
+            )
+        if not isinstance(trial_id, (int, np.integer)) or isinstance(trial_id, bool):
+            raise ValueError(
+                f"specific_trial_id must be an int, got "
+                f"{type(trial_id).__name__}: {trial_id}"
+            )
+
+        task_id = int(task_id)
+        trial_id = int(trial_id)
+        num_tasks = len(self.trial_id_bins)
+        if task_id < 0 or task_id >= num_tasks:
+            raise ValueError(
+                f"specific_task_id {task_id} is out of range [0, {num_tasks - 1}]"
+            )
+
+        num_trials = self.trial_id_bins[task_id]
+        if trial_id < 0 or trial_id >= num_trials:
+            raise ValueError(
+                f"specific_trial_id {trial_id} is out of range [0, {num_trials - 1}] "
+                f"for task_id {task_id}"
+            )
+
+        task_start = self.cumsum_trial_id_bins[task_id - 1] if task_id > 0 else 0
+        self.specific_reset_id = int(task_start + trial_id)
+        if self.seed_offset == 0:
+            logger.info(
+                "[libero eval] fixed task_id=%s, trial_id=%s, reset_state_id=%s",
+                task_id,
+                trial_id,
+                self.specific_reset_id,
+            )
 
     def _compute_total_num_group_envs(self):
         self.total_num_group_envs = 0
